@@ -181,11 +181,11 @@
           <div class="flex items-center space-x-2">
             <div class="flex items-center bg-slate-100 rounded-xl px-2 py-1 border border-slate-200">
               <span class="text-xs font-bold text-slate-400 mr-1">X:</span>
-              <input id="input-guess-x" type="number" min="-5" max="5" placeholder="0" class="w-14 bg-transparent text-center font-bold text-slate-800 outline-none">
+              <input id="input-guess-x" type="number" step="any" placeholder="0" class="w-14 bg-transparent text-center font-bold text-slate-800 outline-none">
             </div>
             <div class="flex items-center bg-slate-100 rounded-xl px-2 py-1 border border-slate-200">
               <span class="text-xs font-bold text-slate-400 mr-1">Y:</span>
-              <input id="input-guess-y" type="number" min="-5" max="5" placeholder="0" class="w-14 bg-transparent text-center font-bold text-slate-800 outline-none">
+              <input id="input-guess-y" type="number" step="any" placeholder="0" class="w-14 bg-transparent text-center font-bold text-slate-800 outline-none">
             </div>
             <button id="btn-submit-guess" class="flex-1 py-2.5 px-4 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-semibold text-xs sm:text-sm rounded-xl transition-all shadow-md shadow-indigo-100">
               Tipp elküldése
@@ -595,21 +595,20 @@
       const xVal = document.getElementById('input-guess-x').value.trim();
       const yVal = document.getElementById('input-guess-y').value.trim();
 
-      // Formátum validáció: -5 és 5 közötti egész szám
       if (xVal === '' || yVal === '') {
-        errEl.textContent = "Rossz formátum! Kérlek, -5 és 5 közötti egész számot adj meg!";
-        errEl.classList.remove('hidden');
-        return;
-      }
+    errEl.textContent = "Kérlek, töltsd ki mindkét mezőt!";
+    errEl.classList.remove('hidden');
+    return;
+  }
 
-      const gx = Number(xVal);
-      const gy = Number(yVal);
+  const gx = Number(xVal.replace(',', '.'));
+  const gy = Number(yVal.replace(',', '.'));
 
-      if (!Number.isInteger(gx) || !Number.isInteger(gy) || gx < GRID_MIN || gx > GRID_MAX || gy < GRID_MIN || gy > GRID_MAX) {
-        errEl.textContent = "Rossz formátum! Kérlek, -5 és 5 közötti egész számot adj meg!";
-        errEl.classList.remove('hidden');
-        return;
-      }
+  if (isNaN(gx) || isNaN(gy)) {
+    errEl.textContent = "Rossz formátum! Kérlek, érvényes számot adj meg!";
+    errEl.classList.remove('hidden');
+    return;
+  }
 
       // Távolság kiszámítása a gép titkos pontjától
       const d2 = calcD2({ x: gx, y: gy }, gameState.machineSecret);
