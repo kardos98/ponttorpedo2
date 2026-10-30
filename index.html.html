@@ -1,0 +1,1313 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ponttorpedó – Koordinátageometriai Felfedezőjáték</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts: Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+    }
+    /* SVG stílusok és finom animációk */
+    .grid-line {
+      stroke: #e2e8f0;
+      stroke-width: 1;
+    }
+    .axis-line {
+      stroke: #475569;
+      stroke-width: 2;
+    }
+    .candidate-point {
+      transition: r 0.2s ease, fill 0.2s ease;
+    }
+    .candidate-point:hover {
+      r: 6;
+      fill: #10b981;
+      cursor: pointer;
+    }
+    .interactive-point {
+      cursor: pointer;
+    }
+    .interactive-point:hover circle {
+      fill: #6366f1;
+      opacity: 0.4;
+    }
+    /* Konfetti vászon */
+    #confetti-canvas {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      pointer-events: none;
+      z-index: 100;
+    }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col antialiased">
+  <canvas id="confetti-canvas"></canvas>
+
+  <!-- Fejléc -->
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-sm">
+    <div class="max-w-7xl mx-auto px-4 py-3 sm:px-6 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <div class="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-bold text-xl shadow-md shadow-indigo-100">
+          🎯
+        </div>
+        <div>
+          <h1 class="text-xl sm:text-2xl font-bold text-slate-900 leading-tight">Ponttorpedó</h1>
+          <p class="text-xs sm:text-sm text-slate-500 font-medium">Körök metszése & Koordinátageometria</p>
+        </div>
+      </div>
+      <div class="flex items-center space-x-2">
+        <button id="btn-rules" class="inline-flex items-center px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg text-indigo-700 bg-indigo-50 hover:bg-indigo-100 transition-colors">
+          📖 Játékszabály & Didaktika
+        </button>
+        <button id="btn-restart" class="inline-flex items-center px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg text-slate-700 bg-slate-100 hover:bg-slate-200 transition-colors">
+          🔄 Új játék
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Fő tartalom -->
+  <main class="max-w-7xl mx-auto px-3 sm:px-6 py-4 sm:py-6 flex-1 w-full">
+
+    <!-- Felső vezérlősáv: Szintválasztás, Kör állapota, Titkos pont segítő -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+      
+      <!-- Szintválasztó -->
+      <div class="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm flex flex-col justify-between">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-xs font-bold uppercase tracking-wider text-slate-400">Nehézségi szint</span>
+          <span id="level-badge" class="px-2 py-0.5 text-xs font-semibold rounded-full bg-emerald-100 text-emerald-800">Kezdő (5 lépés)</span>
+        </div>
+        <div class="grid grid-cols-3 gap-2">
+          <button class="level-btn py-2 px-1 text-center rounded-xl text-xs font-semibold border transition-all bg-indigo-600 text-white border-indigo-600 shadow-sm" data-level="kezdo">
+            Kezdő<br><span class="text-[10px] opacity-80">(5 lépés)</span>
+          </button>
+          <button class="level-btn py-2 px-1 text-center rounded-xl text-xs font-semibold border transition-all bg-white text-slate-700 border-slate-200 hover:bg-slate-50" data-level="halado">
+            Haladó<br><span class="text-[10px] opacity-80">(4 lépés)</span>
+          </button>
+          <button class="level-btn py-2 px-1 text-center rounded-xl text-xs font-semibold border transition-all bg-white text-slate-700 border-slate-200 hover:bg-slate-50" data-level="profi">
+            Profi<br><span class="text-[10px] opacity-80">(3 lépés)</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Kör és Pontszám / Állapot -->
+      <div class="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm flex items-center justify-between">
+        <div>
+          <span class="text-xs font-bold uppercase tracking-wider text-slate-400">Aktuális menet</span>
+          <div class="flex items-baseline space-x-2">
+            <span id="round-counter" class="text-3xl font-extrabold text-slate-900">1. kör</span>
+            <span id="game-status-sub" class="text-xs text-indigo-600 font-semibold">Tippelj te először!</span>
+          </div>
+          <div class="text-xs text-slate-500 mt-1">Tartomány: <span class="font-semibold text-slate-700">[-5; 5] × [-5; 5]</span> (121 rácspont)</div>
+        </div>
+        <div class="text-right">
+          <div class="text-xs font-bold uppercase tracking-wider text-slate-400">Gép esélye</div>
+          <div id="candidates-count-pill" class="text-xl font-bold text-emerald-600">121 pont</div>
+          <div class="text-[11px] text-slate-400">lehetséges célpont</div>
+        </div>
+      </div>
+
+      <!-- Titkos pont jegyzetelő (Pedagógiai segítő, elrejthető) -->
+      <div class="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm flex flex-col justify-between">
+        <div class="flex items-center justify-between mb-1">
+          <span class="text-xs font-bold uppercase tracking-wider text-slate-400">Saját titkos pontod</span>
+          <button id="toggle-secret-btn" class="text-xs font-semibold text-indigo-600 hover:text-indigo-800">👁 Mutat/Rejt</button>
+        </div>
+        <p class="text-xs text-slate-500 mb-2">Válassz egy rácspontot fejben vagy írd be ide (csak te látod)!</p>
+        <div class="flex items-center space-x-2">
+          <input id="my-secret-x" type="number" min="-5" max="5" placeholder="X" class="w-16 px-2 py-1.5 text-center text-sm font-semibold rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none">
+          <input id="my-secret-y" type="number" min="-5" max="5" placeholder="Y" class="w-16 px-2 py-1.5 text-center text-sm font-semibold rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none">
+          <button id="save-secret-btn" class="flex-1 px-3 py-1.5 text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-colors">
+            Rögzít
+          </button>
+        </div>
+        <div id="secret-point-display" class="text-xs font-semibold text-indigo-700 mt-1 hidden">
+          Rögzített pontod: <span id="secret-coords-text" class="font-mono">nincs megadva</span>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Értesítési / Üzenő doboz (Hibaüzenetek, Nyerési bannerek) -->
+    <div id="banner-container" class="hidden mb-6 transition-all"></div>
+
+    <!-- Mobil fülek a két koordinátarendszer közötti váltáshoz -->
+    <div class="flex lg:hidden bg-slate-200 p-1 rounded-xl mb-4">
+      <button id="tab-student-view" class="flex-1 py-2 text-xs font-semibold rounded-lg bg-white text-indigo-700 shadow-sm">
+        1. Gép pontjának keresése
+      </button>
+      <button id="tab-machine-view" class="flex-1 py-2 text-xs font-semibold rounded-lg text-slate-600 hover:text-slate-900">
+        2. Saját pontom védelme (<span id="tab-cand-count">121</span>)
+      </button>
+    </div>
+
+    <!-- Játékfelület: Két koordinátarendszer és Tippelő panelek -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+      <!-- 1. OSZLOP: A diák támadása (A gép pontjának keresése) -->
+      <div id="col-student" class="bg-white rounded-3xl p-4 sm:p-6 border border-slate-200 shadow-sm flex flex-col">
+        <div class="flex items-center justify-between mb-3">
+          <div>
+            <h2 class="text-base sm:text-lg font-bold text-slate-900 flex items-center">
+              <span class="w-3 h-3 rounded-full bg-indigo-500 inline-block mr-2"></span>
+              A gép pontjának keresése
+            </h2>
+            <p class="text-xs text-slate-500">Tippjeidből rajzolt körök metszéspontja adja a gép pontját!</p>
+          </div>
+          <span class="text-xs px-2.5 py-1 bg-indigo-50 text-indigo-700 rounded-full font-semibold">Támadásod</span>
+        </div>
+
+        <!-- SVG Koordinátarendszer 1 -->
+        <div class="w-full aspect-square max-w-[420px] mx-auto bg-slate-50 rounded-2xl p-2 border border-slate-200 relative overflow-hidden select-none">
+          <svg id="svg-student" class="w-full h-full" viewBox="0 0 360 360"></svg>
+        </div>
+
+        <!-- Tippelési űrlap a diák számára -->
+        <div class="mt-4 pt-4 border-t border-slate-100">
+          <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
+            1. Lépés: Add meg a tippedet a gép pontjára (X; Y):
+          </label>
+          <div class="flex items-center space-x-2">
+            <div class="flex items-center bg-slate-100 rounded-xl px-2 py-1 border border-slate-200">
+              <span class="text-xs font-bold text-slate-400 mr-1">X:</span>
+              <input id="input-guess-x" type="number" min="-5" max="5" placeholder="0" class="w-14 bg-transparent text-center font-bold text-slate-800 outline-none">
+            </div>
+            <div class="flex items-center bg-slate-100 rounded-xl px-2 py-1 border border-slate-200">
+              <span class="text-xs font-bold text-slate-400 mr-1">Y:</span>
+              <input id="input-guess-y" type="number" min="-5" max="5" placeholder="0" class="w-14 bg-transparent text-center font-bold text-slate-800 outline-none">
+            </div>
+            <button id="btn-submit-guess" class="flex-1 py-2.5 px-4 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-semibold text-xs sm:text-sm rounded-xl transition-all shadow-md shadow-indigo-100">
+              Tipp elküldése
+            </button>
+          </div>
+          <!-- Hibajelzés rossz koordináta formátumra -->
+          <div id="guess-format-error" class="hidden text-xs font-medium text-rose-600 mt-2 bg-rose-50 p-2 rounded-lg border border-rose-200">
+            Rossz formátum! Kérlek, -5 és 5 közötti egész számot adj meg!
+          </div>
+
+          <!-- Gép válasza a diák tippjére -->
+          <div id="machine-feedback-card" class="hidden mt-3 p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between">
+            <div>
+              <span class="text-[11px] font-bold text-slate-400 uppercase block">Gép válasza a tippedre</span>
+              <span id="machine-distance-text" class="text-sm font-bold text-indigo-700">d = ?</span>
+            </div>
+            <span class="text-xs text-slate-400">Kör berajzolva a bal oldali rácsra 🔵</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2. OSZLOP: A gép támadása (A diák pontjának keresése) -->
+      <div id="col-machine" class="hidden lg:flex bg-white rounded-3xl p-4 sm:p-6 border border-slate-200 shadow-sm flex flex-col">
+        <div class="flex items-center justify-between mb-3">
+          <div>
+            <h2 class="text-base sm:text-lg font-bold text-slate-900 flex items-center">
+              <span class="w-3 h-3 rounded-full bg-rose-500 inline-block mr-2"></span>
+              A te pontod elleni támadás
+            </h2>
+            <p class="text-xs text-slate-500">Zöld pontok: ahova a gép szerint még eshet a pontod!</p>
+          </div>
+          <span class="text-xs px-2.5 py-1 bg-rose-50 text-rose-700 rounded-full font-semibold">Gép lépése</span>
+        </div>
+
+        <!-- SVG Koordinátarendszer 2 -->
+        <div class="w-full aspect-square max-w-[420px] mx-auto bg-slate-50 rounded-2xl p-2 border border-slate-200 relative overflow-hidden select-none">
+          <svg id="svg-machine" class="w-full h-full" viewBox="0 0 360 360"></svg>
+        </div>
+
+        <!-- Távolság-megadási űrlap a gép tippjéhez -->
+        <div class="mt-4 pt-4 border-t border-slate-100">
+          <div class="flex items-center justify-between mb-2">
+            <label class="block text-xs font-bold uppercase tracking-wider text-slate-500">
+              2. Lépés: A gép tippje a te pontodra:
+            </label>
+            <span id="ai-guess-badge" class="text-xs font-mono font-bold bg-rose-100 text-rose-800 px-2 py-0.5 rounded-lg">
+              (Várakozás a tippedre...)
+            </span>
+          </div>
+
+          <div class="space-y-2">
+            <div class="flex items-center space-x-2">
+              <input id="input-student-dist" type="text" placeholder="pl. 5 vagy 4.12 vagy √17" disabled class="flex-1 px-3 py-2 text-sm font-semibold rounded-xl border border-slate-300 bg-slate-100 focus:bg-white focus:ring-2 focus:ring-rose-500 outline-none transition-all">
+              <button id="btn-submit-dist" disabled class="py-2 px-3 bg-rose-600 hover:bg-rose-700 disabled:bg-slate-300 text-white font-semibold text-xs sm:text-sm rounded-xl transition-all shadow-md shadow-rose-100">
+                Távolság beküldése
+              </button>
+            </div>
+
+            <!-- Segítő gomb a távolsághoz ha be van írva a secret point -->
+            <div class="flex items-center justify-between">
+              <p class="text-[11px] text-slate-400">
+                Formátumok: egész (5), tizedes (4.12 vagy 4,12), gyök (√17 vagy gyök(17))
+              </p>
+              <button id="btn-auto-calc-dist" class="text-[11px] font-semibold text-indigo-600 hover:underline hidden">
+                💡 Automata számolás a jegyzetemből
+              </button>
+            </div>
+
+            <!-- Hiba a távolság formátumára -->
+            <div id="dist-format-error" class="hidden text-xs font-medium text-rose-600 bg-rose-50 p-2 rounded-lg border border-rose-200">
+              Érvénytelen távolság formátum! Kérlek, pozitív számot vagy gyökös alakot adj meg!
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Lépéstörténet (Napló / Táblázat) -->
+    <div class="mt-8 bg-white rounded-3xl p-4 sm:p-6 border border-slate-200 shadow-sm">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-base font-bold text-slate-900">Menetek naplója</h3>
+        <span class="text-xs text-slate-400">Körről körre dokumentálva</span>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-xs sm:text-sm">
+          <thead>
+            <tr class="border-b border-slate-200 text-slate-400 uppercase font-semibold text-[11px]">
+              <th class="pb-2">Kör</th>
+              <th class="pb-2">Te tipped</th>
+              <th class="pb-2">Kapott távolság</th>
+              <th class="pb-2">Gép tippje</th>
+              <th class="pb-2">Általad adott távolság</th>
+              <th class="pb-2 text-right">Maradt gép-jelölt</th>
+            </tr>
+          </thead>
+          <tbody id="history-table-body" class="divide-y divide-slate-100 font-medium text-slate-700">
+            <tr>
+              <td colspan="6" class="py-4 text-center text-slate-400 italic">Még nem kezdődött el a játék. Add meg az első tippedet!</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Lábléc -->
+  <footer class="bg-white border-t border-slate-200 py-4 text-center text-xs text-slate-400">
+    Ponttorpedó – Felfedeztető matematikaóra koordinátageometriához & szinusztételhez • [-5; 5]² rácsháló
+  </footer>
+
+  <!-- Játékszabály és Didaktikai Modal -->
+  <div id="rules-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-3xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6 shadow-2xl border border-slate-100">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+        <h3 class="text-lg font-bold text-slate-900">Játékszabály & Matematikai Módszertan</h3>
+        <button id="close-rules-btn" class="text-slate-400 hover:text-slate-600 text-2xl font-bold">&times;</button>
+      </div>
+
+      <div class="space-y-4 text-xs sm:text-sm text-slate-600 leading-relaxed">
+        <div class="bg-indigo-50 border border-indigo-100 rounded-2xl p-4">
+          <h4 class="font-bold text-indigo-900 text-sm mb-1">A játék célja és menete</h4>
+          <p>Mindketten (te és a gép) kiválasztotok egy egész koordinátájú titkos pontot a <code class="bg-white px-1.5 py-0.5 rounded text-indigo-700 font-mono font-bold">[-5; 5] × [-5; 5]</code> négyzethálóról (összesen 121 rácspont). Minden körben mindketten tippeltek egy pontot, és megadjátok a távolságot a saját titkos pontotoktól Pitagorasz-tétel szerint: <span class="font-mono font-semibold">d = √((x₁-x₂)² + (y₁-y₂)²)</span>.</p>
+        </div>
+
+        <div>
+          <h4 class="font-bold text-slate-900 text-sm mb-1">Nehézségi szintek a gépi stratégiában:</h4>
+          <ul class="list-disc pl-5 space-y-1">
+            <li><strong class="text-slate-800">Kezdő:</strong> A gép megfontoltan, 5 lépés alatt szűkíti le és találja el a pontodat.</li>
+            <li><strong class="text-slate-800">Haladó:</strong> A gép 4 lépésből mindig megtalálja a pontodat.</li>
+            <li><strong class="text-slate-800">Profi:</strong> A gép pontosan <strong>3 lépésből</strong> garantáltan megtalálja a pontodat (injektív szétválasztó heurisztika a körökön)!</li>
+          </ul>
+        </div>
+
+        <div class="bg-emerald-50 border border-emerald-100 rounded-2xl p-4">
+          <h4 class="font-bold text-emerald-900 text-sm mb-1">Módszertani tipp a tanításhoz</h4>
+          <p>A játék szemléletesen felfedezteti a <strong>kör egyenletét</strong>: az adott ponttól $d$ távolságra lévő rácspontok egy $(x-u)^2 + (y-v)^2 = d^2$ egyenletű körön fekszenek. Két kör metszéspontja legfeljebb 2 pont lehet; a harmadik kör pedig egyértelműsíti a megoldást. Ez közvetlenül megelőzi a szinusztétel és a koordinátageometria tanítását!</p>
+        </div>
+      </div>
+
+      <div class="mt-6 pt-3 border-t border-slate-100 text-right">
+        <button id="close-rules-btn-2" class="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs sm:text-sm rounded-xl">
+          Értem, játszom!
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- JÁTÉK MOTOR ÉS LOGIKA -->
+  <script>
+    /* =========================================================================
+       1. ALAPADATOK ÉS ÁLLAPOTOK
+       ========================================================================= */
+    const GRID_MIN = -5;
+    const GRID_MAX = 5;
+    const TOTAL_POINTS = 121;
+
+    // Játék állapot
+    let gameState = {
+      level: 'kezdo', // 'kezdo' (5), 'halado' (4), 'profi' (3)
+      round: 1,
+      phase: 'awaiting_student_guess', // 'awaiting_student_guess' | 'awaiting_student_dist' | 'game_over' | 'finishing_mode'
+      machineSecret: { x: 0, y: 0 },
+      studentSecret: null, // opcionális jegyzet
+      studentGuesses: [], // {x, y, d, d2}
+      machineGuesses: [], // {x, y, dInput, candidatesLeft}
+      machineCandidates: [], // diák pontjának lehetséges jelöltjei
+      studentWon: false,
+      machineWon: false,
+      history: []
+    };
+
+    // SVG rajzolási paraméterek
+    const SVG_SIZE = 360;
+    const ORIGIN = 180;
+    const STEP = 28; // 1 egység = 28 px (-5..5 => 10*28 = 280 px)
+
+    function toSvgX(gx) { return ORIGIN + gx * STEP; }
+    function toSvgY(gy) { return ORIGIN - gy * STEP; }
+    function fromSvgCoord(sx, sy) {
+      const gx = Math.round((sx - ORIGIN) / STEP);
+      const gy = Math.round((ORIGIN - sy) / STEP);
+      return {
+        x: Math.max(GRID_MIN, Math.min(GRID_MAX, gx)),
+        y: Math.max(GRID_MIN, Math.min(GRID_MAX, gy))
+      };
+    }
+
+    // Távolság- és Pitagorasz függvények
+    function calcD2(p1, p2) {
+      return (p1.x - p2.x)**2 + (p1.y - p2.y)**2;
+    }
+    function calcDist(p1, p2) {
+      return Math.sqrt(calcD2(p1, p2));
+    }
+
+    function formatDistance(d2) {
+      if (d2 === 0) return { str: "TALÁLAT! d = 0", isHit: true };
+      const root = Math.sqrt(d2);
+      if (Number.isInteger(root)) {
+        return { str: `d = ${root}`, isHit: false };
+      } else {
+        return { str: `d ≈ ${root.toFixed(2).replace('.', ',')} (√${d2})`, isHit: false };
+      }
+    }
+
+    /* =========================================================================
+       2. GÉPI INTELLIGENCIA & STRATÉGIÁK (3, 4, 5 LÉPÉS)
+       ========================================================================= */
+    function getAllGridPoints() {
+      const pts = [];
+      for (let x = GRID_MIN; x <= GRID_MAX; x++) {
+        for (let y = GRID_MIN; y <= GRID_MAX; y++) {
+          pts.push({ x, y });
+        }
+      }
+      return pts;
+    }
+
+    // Injektív vagy leghatékonyabb szétválasztó keresése
+    function findBestSeparator(candidates, requireInjective = true) {
+      if (candidates.length <= 1) return candidates[0] || { x: 0, y: 0 };
+
+      let bestPoint = null;
+      let minMaxBucket = Infinity;
+      let maxUnique = -1;
+
+      // Végigpásztázzuk az egész rácsot
+      for (let x = GRID_MIN; x <= GRID_MAX; x++) {
+        for (let y = GRID_MIN; y <= GRID_MAX; y++) {
+          const distMap = new Map();
+          for (const c of candidates) {
+            const d2 = calcD2({x, y}, c);
+            distMap.set(d2, (distMap.get(d2) || 0) + 1);
+          }
+          let maxBucket = 0;
+          for (const cnt of distMap.values()) {
+            if (cnt > maxBucket) maxBucket = cnt;
+          }
+          const unique = distMap.size;
+
+          if (requireInjective && maxBucket === 1) {
+            return { x, y }; // Tökéletes szétválasztó: minden jelölt egyedi távolságot kap!
+          }
+
+          if (maxBucket < minMaxBucket || (maxBucket === minMaxBucket && unique > maxUnique)) {
+            minMaxBucket = maxBucket;
+            maxUnique = unique;
+            bestPoint = { x, y };
+          }
+        }
+      }
+      return bestPoint || { x: 1, y: 4 };
+    }
+
+    // Szimmetrikus, lassító tippet keresünk a kezdő/haladó szinthez, hogy pontosan a kívánt lépésszámig tartson
+    function findDelayingGuess(candidates, currentRound, targetSteps) {
+      if (candidates.length <= 1) return candidates[0] || { x: 0, y: 0 };
+      
+      const stepsRemaining = targetSteps - currentRound;
+      // Ha már az utolsó előtti körben vagyunk a találat előtt, akkor szét kell választani 1-re!
+      if (stepsRemaining <= 1) {
+        return findBestSeparator(candidates, true);
+      }
+
+      // Keresünk olyan pontot a szimmetriatengelyeken (pl. (0,1), (0,2), (1,0)), ami csökkenti a halmazt, de NEM szűkíti 1-re
+      const candidateGuesses = [
+        {x: 0, y: 1}, {x: 0, y: 2}, {x: 1, y: 0}, {x: 2, y: 0},
+        {x: 0, y: 0}, {x: 1, y: 1}, {x: -1, y: 1}, {x: 0, y: 3}
+      ];
+
+      for (const g of candidateGuesses) {
+        const distMap = new Map();
+        for (const c of candidates) {
+          const d2 = calcD2(g, c);
+          distMap.set(d2, (distMap.get(d2) || 0) + 1);
+        }
+        let maxB = 0;
+        for (const cnt of distMap.values()) if (cnt > maxB) maxB = cnt;
+
+        // Ha van legalább 2-es vödör és csökkent a jelöltek száma
+        if (maxB >= 2 && distMap.size > 1) {
+          return g;
+        }
+      }
+      return findBestSeparator(candidates, false);
+    }
+
+    function determineMachineGuess() {
+      const r = gameState.round;
+      const cands = gameState.machineCandidates;
+
+      if (cands.length === 1) {
+        return { ...cands[0] };
+      }
+
+      // 1. Körben a gép mindig az Origót tippeli (0, 0)
+      if (r === 1) {
+        return { x: 0, y: 0 };
+      }
+
+      if (gameState.level === 'profi') {
+        // Profi: 2. körben tökéletesen szétválasztó pontot ad, 3. körben pedig a megmaradt 1 pontot találja el
+        if (r === 2) {
+          return findBestSeparator(cands, true);
+        } else {
+          return cands[0] || { x: 0, y: 0 };
+        }
+      } else if (gameState.level === 'halado') {
+        // Haladó: 4 lépésből találja meg (2. körben részleges szűkítés, 3. körben 1-re szűkítés, 4. körben találat)
+        return findDelayingGuess(cands, r, 4);
+      } else {
+        // Kezdő: 5 lépésből találja meg
+        return findDelayingGuess(cands, r, 5);
+      }
+    }
+
+    /* =========================================================================
+       3. TÁVOLSÁG ÉRTELMEZŐ (DIÁK BEMENETE)
+       ========================================================================= */
+    function parseStudentDistanceInput(raw) {
+      if (!raw) return null;
+      let s = raw.trim().toLowerCase().replace(',', '.');
+
+      // Gyökös alakok: √17, sqrt(17), gyök(17), gyök 17, gyok(17)
+      const sqrtMatch = s.match(/^(?:√|sqrt|gyök|gyok)\s*\(?\s*(\d+(?:\.\d+)?)\s*\)?$/);
+      if (sqrtMatch) {
+        const valInside = parseFloat(sqrtMatch[1]);
+        if (isNaN(valInside) || valInside < 0) return null;
+        return {
+          d: Math.sqrt(valInside),
+          d2: Math.round(valInside),
+          isExactSqrt: true
+        };
+      }
+
+      // Sima szám (egész vagy tizedes)
+      const num = parseFloat(s);
+      if (isNaN(num) || num < 0) return null;
+
+      // Legközelebbi négyzetszám meghatározása
+      const d2 = Math.round(num * num);
+      return {
+        d: num,
+        d2: d2,
+        isExactSqrt: false
+      };
+    }
+
+    /* =========================================================================
+       4. JÁTÉK INDÍTÁSA ÉS KÖRÖK KEZELÉSE
+       ========================================================================= */
+    function initGame() {
+      // Új véletlen pont a gépnek
+      const gx = Math.floor(Math.random() * (GRID_MAX - GRID_MIN + 1)) + GRID_MIN;
+      const gy = Math.floor(Math.random() * (GRID_MAX - GRID_MIN + 1)) + GRID_MIN;
+
+      gameState.machineSecret = { x: gx, y: gy };
+      gameState.round = 1;
+      gameState.phase = 'awaiting_student_guess';
+      gameState.studentGuesses = [];
+      gameState.machineGuesses = [];
+      gameState.machineCandidates = getAllGridPoints();
+      gameState.studentWon = false;
+      gameState.machineWon = false;
+      gameState.history = [];
+
+      // UI visszaállítás
+      hideBanner();
+      document.getElementById('guess-format-error').classList.add('hidden');
+      document.getElementById('dist-format-error').classList.add('hidden');
+      document.getElementById('machine-feedback-card').classList.add('hidden');
+
+      document.getElementById('input-guess-x').value = '';
+      document.getElementById('input-guess-y').value = '';
+      document.getElementById('input-student-dist').value = '';
+      document.getElementById('input-student-dist').disabled = true;
+      document.getElementById('btn-submit-dist').disabled = true;
+      document.getElementById('btn-submit-guess').disabled = false;
+      document.getElementById('ai-guess-badge').textContent = '(Várakozás a tippedre...)';
+
+      updateHeaderStats();
+      renderHistoryTable();
+      renderBothSvgs();
+    }
+
+    function updateHeaderStats() {
+      document.getElementById('round-counter').textContent = `${gameState.round}. kör`;
+      const candCount = gameState.machineCandidates.length;
+      document.getElementById('candidates-count-pill').textContent = `${candCount} pont`;
+      document.getElementById('tab-cand-count').textContent = candCount;
+
+      let subText = "Tippelj te először!";
+      if (gameState.phase === 'awaiting_student_dist') {
+        subText = "Add meg a távolságot a gép tippjéhez!";
+      } else if (gameState.phase === 'game_over') {
+        subText = "A játék véget ért.";
+      } else if (gameState.phase === 'finishing_mode') {
+        subText = "Keresd meg te is a gép pontját!";
+      }
+      document.getElementById('game-status-sub').textContent = subText;
+    }
+
+    /* =========================================================================
+       5. INTERAKCIÓ: DIÁK TIPPELÉSE
+       ========================================================================= */
+    function handleStudentGuessSubmit() {
+      const errEl = document.getElementById('guess-format-error');
+      errEl.classList.add('hidden');
+
+      const xVal = document.getElementById('input-guess-x').value.trim();
+      const yVal = document.getElementById('input-guess-y').value.trim();
+
+      // Formátum validáció: -5 és 5 közötti egész szám
+      if (xVal === '' || yVal === '') {
+        errEl.textContent = "Rossz formátum! Kérlek, -5 és 5 közötti egész számot adj meg!";
+        errEl.classList.remove('hidden');
+        return;
+      }
+
+      const gx = Number(xVal);
+      const gy = Number(yVal);
+
+      if (!Number.isInteger(gx) || !Number.isInteger(gy) || gx < GRID_MIN || gx > GRID_MAX || gy < GRID_MIN || gy > GRID_MAX) {
+        errEl.textContent = "Rossz formátum! Kérlek, -5 és 5 közötti egész számot adj meg!";
+        errEl.classList.remove('hidden');
+        return;
+      }
+
+      // Távolság kiszámítása a gép titkos pontjától
+      const d2 = calcD2({ x: gx, y: gy }, gameState.machineSecret);
+      const distInfo = formatDistance(d2);
+
+      gameState.studentGuesses.push({
+        x: gx,
+        y: gy,
+        d: Math.sqrt(d2),
+        d2: d2,
+        str: distInfo.str
+      });
+
+      // Visszajelzés a diák felé
+      const feedbackCard = document.getElementById('machine-feedback-card');
+      const distText = document.getElementById('machine-distance-text');
+      distText.textContent = distInfo.str;
+      if (distInfo.isHit) {
+        distText.className = "text-base font-bold text-emerald-600";
+        gameState.studentWon = true;
+      } else {
+        distText.className = "text-sm font-bold text-indigo-700";
+      }
+      feedbackCard.classList.remove('hidden');
+
+      // Gép azonnali tippje a diák pontjára
+      const aiGuess = determineMachineGuess();
+      gameState.currentAiGuess = aiGuess;
+
+      document.getElementById('ai-guess-badge').textContent = `(${aiGuess.x}; ${aiGuess.y})`;
+
+      // Átadás a 2. fázisnak: diák megadja a távolságot
+      gameState.phase = 'awaiting_student_dist';
+      document.getElementById('btn-submit-guess').disabled = true;
+      document.getElementById('input-student-dist').disabled = false;
+      document.getElementById('input-student-dist').value = '';
+      document.getElementById('input-student-dist').focus();
+      document.getElementById('btn-submit-dist').disabled = false;
+
+      // Ha van rögzített titkos pont, felajánljuk a segítő gombot
+      if (gameState.studentSecret) {
+        document.getElementById('btn-auto-calc-dist').classList.remove('hidden');
+      }
+
+      updateHeaderStats();
+      renderBothSvgs();
+    }
+
+    /* =========================================================================
+       6. INTERAKCIÓ: DIÁK TÁVOLSÁG-BEKÜLDÉSE ÉS GÉP SZŰRÉSE
+       ========================================================================= */
+    function handleStudentDistanceSubmit() {
+      const errEl = document.getElementById('dist-format-error');
+      errEl.classList.add('hidden');
+
+      const raw = document.getElementById('input-student-dist').value;
+      const parsed = parseStudentDistanceInput(raw);
+
+      if (!parsed) {
+        errEl.textContent = "Érvénytelen távolság formátum! Kérlek, pozitív számot vagy gyökös alakot (pl. 5, 4.12, √17) adj meg!";
+        errEl.classList.remove('hidden');
+        return;
+      }
+
+      const aiGuess = gameState.currentAiGuess;
+
+      // Szűrjük a gépi jelölteket az új távolság alapján!
+      const prevCount = gameState.machineCandidates.length;
+      const newCandidates = gameState.machineCandidates.filter(pt => {
+        const actualD2 = calcD2(aiGuess, pt);
+        if (parsed.isExactSqrt) {
+          return actualD2 === parsed.d2;
+        } else {
+          // Tizedes tűrés
+          const actualD = Math.sqrt(actualD2);
+          return Math.abs(actualD - parsed.d) < 0.22;
+        }
+      });
+
+      // KRITÉRIUM 4: Ha a jelöltek halmaza üressé válik -> Ellentmondás / Diák elszámolta
+      if (newCandidates.length === 0) {
+        showContradictionBanner();
+        return;
+      }
+
+      gameState.machineCandidates = newCandidates;
+      const aiHit = (parsed.d2 === 0 || (newCandidates.length === 1 && calcD2(aiGuess, newCandidates[0]) === 0 && parsed.d < 0.1));
+
+      gameState.machineGuesses.push({
+        x: aiGuess.x,
+        y: aiGuess.y,
+        dInput: raw,
+        d2: parsed.d2,
+        d: parsed.d,
+        candidatesLeft: newCandidates.length
+      });
+
+      // Napló bejegyzés
+      const currentStudentGuess = gameState.studentGuesses[gameState.studentGuesses.length - 1];
+      gameState.history.push({
+        round: gameState.round,
+        studentGuess: `(${currentStudentGuess.x}; ${currentStudentGuess.y})`,
+        studentDistGot: currentStudentGuess.str,
+        machineGuess: `(${aiGuess.x}; ${aiGuess.y})`,
+        machineDistGiven: raw,
+        candidatesLeft: newCandidates.length
+      });
+
+      if (aiHit) {
+        gameState.machineWon = true;
+      }
+
+      // Ellenőrizzük a végkimeneteleket
+      checkGameOutcome();
+    }
+
+    /* =========================================================================
+       7. GYŐZELMI ÉS VÉGZŐDÉSI LOGIKA
+       ========================================================================= */
+    function checkGameOutcome() {
+      const studentHit = gameState.studentWon;
+      const machineHit = gameState.machineWon;
+
+      // 1. Döntetlen: mindketten ugyanabban a körben találták el
+      if (studentHit && machineHit) {
+        gameState.phase = 'game_over';
+        showBanner('draw', "Döntetlen! Mindketten eltaláltátok a másik pontját ebben a körben.");
+      }
+      // 2. Diák nyert: eltalálta a gép pontját, miközben a gép még nem
+      else if (studentHit) {
+        gameState.phase = 'game_over';
+        // KRITÉRIUM 5: Profi szint legyőzése kiemelt szöveggel
+        if (gameState.level === 'profi') {
+          launchConfetti();
+          showBanner('profi_king', "Gratulálok, te vagy a ponttorpedó királya! 👑");
+        } else {
+          showBanner('student_win', `Bravó! A(z) ${gameState.round}. körben sikeresen eltaláltad a gép pontját!`);
+        }
+      }
+      // 3. Gép nyert: a gép találta el előbb a diák pontját
+      else if (machineHit) {
+        gameState.phase = 'game_over';
+        // KRITÉRIUM 6: Folytatási lehetőség megadása
+        showBanner('machine_win', `A gép kitalálta a pontodat a ${gameState.round}. lépésben!`);
+      }
+      // 4. Folytatódik a játék a következő körrel
+      else {
+        gameState.round++;
+        gameState.phase = 'awaiting_student_guess';
+
+        document.getElementById('btn-submit-guess').disabled = false;
+        document.getElementById('input-student-dist').disabled = true;
+        document.getElementById('input-student-dist').value = '';
+        document.getElementById('btn-submit-dist').disabled = true;
+        document.getElementById('ai-guess-badge').textContent = '(Várakozás a következő tippedre...)';
+        document.getElementById('machine-feedback-card').classList.add('hidden');
+        document.getElementById('input-guess-x').value = '';
+        document.getElementById('input-guess-y').value = '';
+        document.getElementById('input-guess-x').focus();
+      }
+
+      updateHeaderStats();
+      renderHistoryTable();
+      renderBothSvgs();
+    }
+
+    // Ha a gép nyert, de a diák szeretné befejezni a játékot
+    function enterFinishingMode() {
+      gameState.phase = 'finishing_mode';
+      hideBanner();
+      document.getElementById('btn-submit-guess').disabled = false;
+      document.getElementById('input-guess-x').focus();
+      updateHeaderStats();
+    }
+
+    /* =========================================================================
+       8. BANNER / MODAL ÉRTESÍTÉSEK
+       ========================================================================= */
+    function showBanner(type, message) {
+      const c = document.getElementById('banner-container');
+      c.className = "mb-6 p-4 rounded-2xl border shadow-sm transition-all";
+
+      if (type === 'profi_king') {
+        c.className += " bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-600 text-slate-950 border-amber-300";
+        c.innerHTML = `
+          <div class="flex flex-col sm:flex-row items-center justify-between gap-3 text-center sm:text-left">
+            <div class="flex items-center space-x-3">
+              <span class="text-4xl">👑</span>
+              <div>
+                <h3 class="text-lg font-black tracking-tight">${message}</h3>
+                <p class="text-xs font-semibold text-slate-900/80">Legyőzted a 3 lépéses gépi algoritmust! Kiemelkedő stratégiai gondolkodás!</p>
+              </div>
+            </div>
+            <button onclick="initGame()" class="px-4 py-2 bg-slate-950 hover:bg-slate-900 text-white font-bold text-xs rounded-xl shadow">
+              Új játék indítása
+            </button>
+          </div>
+        `;
+      } else if (type === 'student_win') {
+        c.className += " bg-emerald-50 text-emerald-900 border-emerald-200";
+        c.innerHTML = `
+          <div class="flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div class="flex items-center space-x-2">
+              <span class="text-2xl">🎉</span>
+              <span class="font-bold text-sm sm:text-base">${message}</span>
+            </div>
+            <button onclick="initGame()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs rounded-xl shadow-sm">
+              Új játék indítása
+            </button>
+          </div>
+        `;
+      } else if (type === 'draw') {
+        c.className += " bg-slate-100 text-slate-900 border-slate-300";
+        c.innerHTML = `
+          <div class="flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div class="flex items-center space-x-2">
+              <span class="text-2xl">🤝</span>
+              <span class="font-bold text-sm sm:text-base">${message}</span>
+            </div>
+            <button onclick="initGame()" class="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white font-semibold text-xs rounded-xl shadow-sm">
+              Új játék indítása
+            </button>
+          </div>
+        `;
+      } else if (type === 'machine_win') {
+        c.className += " bg-rose-50 text-rose-900 border-rose-200";
+        c.innerHTML = `
+          <div class="flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div class="flex items-center space-x-2">
+              <span class="text-2xl">🤖</span>
+              <div>
+                <span class="font-bold text-sm sm:text-base block">${message}</span>
+                <span class="text-xs text-rose-700">Szeretnéd kitalálni te is a gép pontját?</span>
+              </div>
+            </div>
+            <div class="flex items-center space-x-2">
+              <button onclick="enterFinishingMode()" class="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs rounded-xl shadow-sm">
+                Játék befejezése (kitalálom én is a gép pontját!)
+              </button>
+              <button onclick="initGame()" class="px-3 py-2 bg-white text-slate-700 border border-slate-300 hover:bg-slate-50 font-semibold text-xs rounded-xl">
+                Új játék
+              </button>
+            </div>
+          </div>
+        `;
+      }
+      c.classList.remove('hidden');
+    }
+
+    // KRITÉRIUM 4: Pontos hibaüzenet, ha a jelölthalmaz üres
+    function showContradictionBanner() {
+      const c = document.getElementById('banner-container');
+      c.className = "mb-6 p-4 rounded-2xl bg-amber-50 text-amber-900 border border-amber-300 shadow-sm transition-all";
+      c.innerHTML = `
+        <div class="flex flex-col sm:flex-row items-center justify-between gap-3">
+          <div class="flex items-center space-x-3">
+            <span class="text-2xl">⚠️</span>
+            <div>
+              <p class="font-bold text-sm sm:text-base">Nem létezik ilyen pont. Valószínűleg elszámoltad, de semmi baj, kezdj egy új játékot!</p>
+              <p class="text-xs text-amber-700 mt-0.5">A megadott távolságkörök nem metszik egymást egyetlen közös [-5; 5] rácsponton sem.</p>
+            </div>
+          </div>
+          <button onclick="initGame()" class="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-semibold text-xs rounded-xl shadow-sm whitespace-nowrap">
+            Új játék indítása
+          </button>
+        </div>
+      `;
+      c.classList.remove('hidden');
+      document.getElementById('btn-submit-dist').disabled = true;
+      document.getElementById('btn-submit-guess').disabled = true;
+    }
+
+    function hideBanner() {
+      const c = document.getElementById('banner-container');
+      c.innerHTML = '';
+      c.classList.add('hidden');
+    }
+
+    /* =========================================================================
+       9. SVG GRAFIKA: KOORDINÁTARENDSZEREK RAJZOLÁSA
+       ========================================================================= */
+    function renderGridBase(svg) {
+      svg.innerHTML = '';
+
+      // Rácsvonalak
+      for (let i = GRID_MIN; i <= GRID_MAX; i++) {
+        // Függőleges
+        const x = toSvgX(i);
+        const vl = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        vl.setAttribute('x1', x);
+        vl.setAttribute('y1', 20);
+        vl.setAttribute('x2', x);
+        vl.setAttribute('y2', SVG_SIZE - 20);
+        vl.setAttribute('class', i === 0 ? 'axis-line' : 'grid-line');
+        svg.appendChild(vl);
+
+        // Vízszintes
+        const y = toSvgY(i);
+        const hl = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        hl.setAttribute('x1', 20);
+        hl.setAttribute('y1', y);
+        hl.setAttribute('x2', SVG_SIZE - 20);
+        hl.setAttribute('y2', y);
+        hl.setAttribute('class', i === 0 ? 'axis-line' : 'grid-line');
+        svg.appendChild(hl);
+
+        // Számok
+        if (i !== 0) {
+          // X tengely számok
+          const tx = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          tx.setAttribute('x', x);
+          tx.setAttribute('y', ORIGIN + 14);
+          tx.setAttribute('text-anchor', 'middle');
+          tx.setAttribute('font-size', '9');
+          tx.setAttribute('fill', '#94a3b8');
+          tx.textContent = i;
+          svg.appendChild(tx);
+
+          // Y tengely számok
+          const ty = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          ty.setAttribute('x', ORIGIN - 8);
+          ty.setAttribute('y', y + 3);
+          ty.setAttribute('text-anchor', 'end');
+          ty.setAttribute('font-size', '9');
+          ty.setAttribute('fill', '#94a3b8');
+          ty.textContent = i;
+          svg.appendChild(ty);
+        }
+      }
+
+      // Origó 0
+      const t0 = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      t0.setAttribute('x', ORIGIN - 6);
+      t0.setAttribute('y', ORIGIN + 12);
+      t0.setAttribute('font-size', '9');
+      t0.setAttribute('fill', '#94a3b8');
+      t0.textContent = '0';
+      svg.appendChild(t0);
+    }
+
+    // 1. Rendszer: Diák támadása (Gép pontjának keresése)
+    function renderStudentSvg() {
+      const svg = document.getElementById('svg-student');
+      renderGridBase(svg);
+
+      // Rajzoljuk be a korábbi tippek köreit
+      gameState.studentGuesses.forEach((g, idx) => {
+        const cx = toSvgX(g.x);
+        const cy = toSvgY(g.y);
+        const rPx = g.d * STEP;
+
+        // Kör íve
+        if (rPx > 0) {
+          const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          circle.setAttribute('cx', cx);
+          circle.setAttribute('cy', cy);
+          circle.setAttribute('r', rPx);
+          circle.setAttribute('fill', 'rgba(99, 102, 241, 0.04)');
+          circle.setAttribute('stroke', '#6366f1');
+          circle.setAttribute('stroke-width', '1.5');
+          circle.setAttribute('stroke-dasharray', '4 3');
+          svg.appendChild(circle);
+        }
+
+        // Tippelt pont
+        const pt = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        pt.setAttribute('cx', cx);
+        pt.setAttribute('cy', cy);
+        pt.setAttribute('r', '4');
+        pt.setAttribute('fill', '#4f46e5');
+        svg.appendChild(pt);
+
+        // Felirat
+        const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        label.setAttribute('x', cx + 6);
+        label.setAttribute('y', cy - 6);
+        label.setAttribute('font-size', '10');
+        label.setAttribute('font-weight', 'bold');
+        label.setAttribute('fill', '#4338ca');
+        label.textContent = `T${idx+1}`;
+        svg.appendChild(label);
+      });
+
+      // Ha játék vége és a diák kitalálta, vagy leleplezzük a gép pontját
+      if (gameState.studentWon) {
+        const mx = toSvgX(gameState.machineSecret.x);
+        const my = toSvgY(gameState.machineSecret.y);
+
+        const hit = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        hit.setAttribute('cx', mx);
+        hit.setAttribute('cy', my);
+        hit.setAttribute('r', '7');
+        hit.setAttribute('fill', '#10b981');
+        hit.setAttribute('stroke', '#ffffff');
+        hit.setAttribute('stroke-width', '2');
+        svg.appendChild(hit);
+      }
+
+      // Interaktív rácspontok kattintásra (kitölti az X, Y mezőket)
+      for (let x = GRID_MIN; x <= GRID_MAX; x++) {
+        for (let y = GRID_MIN; y <= GRID_MAX; y++) {
+          const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+          g.setAttribute('class', 'interactive-point');
+
+          const hoverCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          hoverCircle.setAttribute('cx', toSvgX(x));
+          hoverCircle.setAttribute('cy', toSvgY(y));
+          hoverCircle.setAttribute('r', '8');
+          hoverCircle.setAttribute('fill', 'transparent');
+
+          g.appendChild(hoverCircle);
+          g.addEventListener('click', () => {
+            if (gameState.phase === 'awaiting_student_guess' || gameState.phase === 'finishing_mode') {
+              document.getElementById('input-guess-x').value = x;
+              document.getElementById('input-guess-y').value = y;
+            }
+          });
+          svg.appendChild(g);
+        }
+      }
+    }
+
+    // 2. Rendszer: Gép támadása (Saját pont védelme & Lehetséges jelöltek)
+    function renderMachineSvg() {
+      const svg = document.getElementById('svg-machine');
+      renderGridBase(svg);
+
+      // Zöld pontok: még érvényes jelöltek
+      gameState.machineCandidates.forEach(pt => {
+        const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        c.setAttribute('cx', toSvgX(pt.x));
+        c.setAttribute('cy', toSvgY(pt.y));
+        c.setAttribute('r', gameState.machineCandidates.length <= 12 ? '4' : '2.5');
+        c.setAttribute('fill', '#10b981');
+        c.setAttribute('opacity', '0.7');
+        c.setAttribute('class', 'candidate-point');
+        svg.appendChild(c);
+      });
+
+      // Gép korábbi tippjeinek körei
+      gameState.machineGuesses.forEach((g, idx) => {
+        const cx = toSvgX(g.x);
+        const cy = toSvgY(g.y);
+        const rPx = g.d * STEP;
+
+        if (rPx > 0) {
+          const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          circle.setAttribute('cx', cx);
+          circle.setAttribute('cy', cy);
+          circle.setAttribute('r', rPx);
+          circle.setAttribute('fill', 'rgba(244, 63, 94, 0.04)');
+          circle.setAttribute('stroke', '#f43f5e');
+          circle.setAttribute('stroke-width', '1.5');
+          circle.setAttribute('stroke-dasharray', '4 3');
+          svg.appendChild(circle);
+        }
+
+        // Gép tippjének pontja
+        const pt = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        pt.setAttribute('cx', cx);
+        pt.setAttribute('cy', cy);
+        pt.setAttribute('r', '4');
+        pt.setAttribute('fill', '#e11d48');
+        svg.appendChild(pt);
+
+        const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        label.setAttribute('x', cx + 6);
+        label.setAttribute('y', cy - 6);
+        label.setAttribute('font-size', '10');
+        label.setAttribute('font-weight', 'bold');
+        label.setAttribute('fill', '#be123c');
+        label.textContent = `G${idx+1}`;
+        svg.appendChild(label);
+      });
+
+      // Ha van rögzített titkos pontunk, megjelöljük
+      if (gameState.studentSecret) {
+        const sx = toSvgX(gameState.studentSecret.x);
+        const sy = toSvgY(gameState.studentSecret.y);
+
+        const myPoint = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+        // Kis csillag vagy gyémánt
+        const pts = `${sx},${sy-6} ${sx+6},${sy} ${sx},${sy+6} ${sx-6},${sy}`;
+        myPoint.setAttribute('points', pts);
+        myPoint.setAttribute('fill', '#f59e0b');
+        myPoint.setAttribute('stroke', '#ffffff');
+        myPoint.setAttribute('stroke-width', '1.5');
+        svg.appendChild(myPoint);
+      }
+    }
+
+    function renderBothSvgs() {
+      renderStudentSvg();
+      renderMachineSvg();
+    }
+
+    /* =========================================================================
+       10. TÁBLÁZAT ÉS LÉPÉSTÖRTÉNET
+       ========================================================================= */
+    function renderHistoryTable() {
+      const tbody = document.getElementById('history-table-body');
+      if (gameState.history.length === 0) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="6" class="py-4 text-center text-slate-400 italic">Még nem kezdődött el a játék. Add meg az első tippedet!</td>
+          </tr>
+        `;
+        return;
+      }
+
+      tbody.innerHTML = gameState.history.map(item => `
+        <tr class="hover:bg-slate-50 transition-colors">
+          <td class="py-2.5 font-bold text-slate-900">${item.round}. kör</td>
+          <td class="py-2.5 font-mono text-indigo-700 font-semibold">${item.studentGuess}</td>
+          <td class="py-2.5 text-slate-600">${item.studentDistGot}</td>
+          <td class="py-2.5 font-mono text-rose-700 font-semibold">${item.machineGuess}</td>
+          <td class="py-2.5 text-slate-600 font-mono">${item.machineDistGiven}</td>
+          <td class="py-2.5 text-right font-bold text-emerald-600">${item.candidatesLeft} pont</td>
+        </tr>
+      `).join('');
+    }
+
+    /* =========================================================================
+       11. TITKOS PONT KEZELŐ ÉS AUTOMATA TÁVOLSÁG SEGÍTŐ
+       ========================================================================= */
+    function saveSecretPoint() {
+      const xVal = document.getElementById('my-secret-x').value.trim();
+      const yVal = document.getElementById('my-secret-y').value.trim();
+
+      if (xVal === '' || yVal === '') return;
+      const x = Number(xVal);
+      const y = Number(yVal);
+      if (x < GRID_MIN || x > GRID_MAX || y < GRID_MIN || y > GRID_MAX) return;
+
+      gameState.studentSecret = { x, y };
+      document.getElementById('secret-coords-text').textContent = `(${x}; ${y})`;
+      document.getElementById('secret-point-display').classList.remove('hidden');
+
+      if (gameState.phase === 'awaiting_student_dist') {
+        document.getElementById('btn-auto-calc-dist').classList.remove('hidden');
+      }
+      renderMachineSvg();
+    }
+
+    function toggleSecretVisibility() {
+      const disp = document.getElementById('secret-point-display');
+      disp.classList.toggle('hidden');
+    }
+
+    function autoCalculateStudentDist() {
+      if (!gameState.studentSecret || !gameState.currentAiGuess) return;
+      const d2 = calcD2(gameState.studentSecret, gameState.currentAiGuess);
+      const root = Math.sqrt(d2);
+
+      let distStr = "";
+      if (Number.isInteger(root)) {
+        distStr = `${root}`;
+      } else {
+        distStr = `√${d2}`;
+      }
+      document.getElementById('input-student-dist').value = distStr;
+    }
+
+    /* =========================================================================
+       12. KONFETTI EFFEKTUS (PROFI GYŐZELEMHEZ)
+       ========================================================================= */
+    function launchConfetti() {
+      const canvas = document.getElementById('confetti-canvas');
+      const ctx = canvas.getContext('2d');
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+
+      const pieces = [];
+      const colors = ['#f59e0b', '#ec4899', '#6366f1', '#10b981', '#3b82f6'];
+
+      for (let i = 0; i < 120; i++) {
+        pieces.push({
+          x: Math.random() * canvas.width,
+          y: Math.random() * canvas.height - canvas.height,
+          size: Math.random() * 8 + 4,
+          color: colors[Math.floor(Math.random() * colors.length)],
+          vx: Math.random() * 4 - 2,
+          vy: Math.random() * 4 + 3,
+          rot: Math.random() * 360,
+          vRot: Math.random() * 10 - 5
+        });
+      }
+
+      let frames = 0;
+      function animateConfetti() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        pieces.forEach(p => {
+          p.x += p.vx;
+          p.y += p.vy;
+          p.rot += p.vRot;
+          ctx.save();
+          ctx.translate(p.x, p.y);
+          ctx.rotate(p.rot * Math.PI / 180);
+          ctx.fillStyle = p.color;
+          ctx.fillRect(-p.size/2, -p.size/2, p.size, p.size);
+          ctx.restore();
+        });
+
+        frames++;
+        if (frames < 200) {
+          requestAnimationFrame(animateConfetti);
+        } else {
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+      }
+      animateConfetti();
+    }
+
+    /* =========================================================================
+       13. ESEMÉNYKEZELŐK ÉS RESZPONZÍV LOGIKA
+       ========================================================================= */
+    window.addEventListener('DOMContentLoaded', () => {
+      initGame();
+
+      // Szintváltás
+      document.querySelectorAll('.level-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const lvl = btn.getAttribute('data-level');
+          gameState.level = lvl;
+
+          document.querySelectorAll('.level-btn').forEach(b => {
+            b.className = "level-btn py-2 px-1 text-center rounded-xl text-xs font-semibold border transition-all bg-white text-slate-700 border-slate-200 hover:bg-slate-50";
+          });
+          btn.className = "level-btn py-2 px-1 text-center rounded-xl text-xs font-semibold border transition-all bg-indigo-600 text-white border-indigo-600 shadow-sm";
+
+          const badge = document.getElementById('level-badge');
+          if (lvl === 'kezdo') {
+            badge.textContent = "Kezdő (5 lépés)";
+            badge.className = "px-2 py-0.5 text-xs font-semibold rounded-full bg-emerald-100 text-emerald-800";
+          } else if (lvl === 'halado') {
+            badge.textContent = "Haladó (4 lépés)";
+            badge.className = "px-2 py-0.5 text-xs font-semibold rounded-full bg-blue-100 text-blue-800";
+          } else {
+            badge.textContent = "Profi (3 lépés)";
+            badge.className = "px-2 py-0.5 text-xs font-semibold rounded-full bg-purple-100 text-purple-800";
+          }
+          initGame();
+        });
+      });
+
+      // Gombok eseményei
+      document.getElementById('btn-submit-guess').addEventListener('click', handleStudentGuessSubmit);
+      document.getElementById('input-guess-y').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') handleStudentGuessSubmit();
+      });
+      document.getElementById('btn-submit-dist').addEventListener('click', handleStudentDistanceSubmit);
+      document.getElementById('input-student-dist').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') handleStudentDistanceSubmit();
+      });
+
+      document.getElementById('btn-restart').addEventListener('click', initGame);
+      document.getElementById('save-secret-btn').addEventListener('click', saveSecretPoint);
+      document.getElementById('toggle-secret-btn').addEventListener('click', toggleSecretVisibility);
+      document.getElementById('btn-auto-calc-dist').addEventListener('click', autoCalculateStudentDist);
+
+      // Szabályzat Modal kezelés
+      const modal = document.getElementById('rules-modal');
+      document.getElementById('btn-rules').addEventListener('click', () => modal.classList.remove('hidden'));
+      document.getElementById('close-rules-btn').addEventListener('click', () => modal.classList.add('hidden'));
+      document.getElementById('close-rules-btn-2').addEventListener('click', () => modal.classList.add('hidden'));
+
+      // Mobil nézet fülváltó
+      const tabStudent = document.getElementById('tab-student-view');
+      const tabMachine = document.getElementById('tab-machine-view');
+      const colStudent = document.getElementById('col-student');
+      const colMachine = document.getElementById('col-machine');
+
+      tabStudent.addEventListener('click', () => {
+        colStudent.classList.remove('hidden');
+        colMachine.classList.add('hidden');
+        tabStudent.className = "flex-1 py-2 text-xs font-semibold rounded-lg bg-white text-indigo-700 shadow-sm";
+        tabMachine.className = "flex-1 py-2 text-xs font-semibold rounded-lg text-slate-600 hover:text-slate-900";
+      });
+
+      tabMachine.addEventListener('click', () => {
+        colMachine.classList.remove('hidden');
+        colStudent.classList.add('hidden');
+        tabMachine.className = "flex-1 py-2 text-xs font-semibold rounded-lg bg-white text-rose-700 shadow-sm";
+        tabStudent.className = "flex-1 py-2 text-xs font-semibold rounded-lg text-slate-600 hover:text-slate-900";
+      });
+
+      // Ablak átméretezéskor SVG újrarajzolás
+      window.addEventListener('resize', () => {
+        const canvas = document.getElementById('confetti-canvas');
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+      });
+    });
+  </script>
+</body>
+</html>
